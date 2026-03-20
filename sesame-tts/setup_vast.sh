@@ -101,11 +101,14 @@ info "Using HF token: ${HF_TOKEN:0:10}..."
 
 python3 -c "
 import huggingface_hub, os
+# HF_HOME=/model-cache is set in the Docker image ENV
+# snapshot_download without local_dir caches to HF_HOME/hub/models--sesame--csm-1b
+# which is exactly where from_pretrained('sesame/csm-1b') looks
 huggingface_hub.login(token='${HF_TOKEN}')
-print('[HF] Authenticated. Downloading sesame-community/csm-1b...')
+print('[HF] Authenticated. Downloading sesame/csm-1b to HF cache...')
 huggingface_hub.snapshot_download(
-    repo_id='sesame-community/csm-1b',
-    local_dir='/model-cache/sesame-community/csm-1b',
+    repo_id='sesame/csm-1b',
+    cache_dir='/model-cache/hub',
     ignore_patterns=['*.bin'],   # prefer .safetensors
 )
 print('[HF] Download complete.')
