@@ -94,30 +94,49 @@ echo "SESAME_INTERNAL_KEY=${SESAME_INTERNAL_KEY}" >> /etc/environment
 echo "HF_TOKEN=${HF_TOKEN}" >> /etc/environment
 
 # ── 4. Download CSM-1B model weights ────────────────────────────────────────
-# TODO: Once R2 credentials are available, replace HF download with:
-#   aws s3 cp s3://getampere-model-weights/csm-1b.tar.gz /tmp/ \
-#     --endpoint-url https://fdc6cebcbbf7c7b33cc6a0e59ac8cd5f.r2.cloudflarestorage.com \
-#     --no-sign-request (if public) OR with --aws-access-key-id / --aws-secret-access-key
-#   tar xzf /tmp/csm-1b.tar.gz -C /model-cache/hub/
-# R2 download would be ~2 min vs ~15 min from HuggingFace.
-info "Downloading CSM-1B model weights from HuggingFace (~3GB, ~10-15 min)..."
-info "HF token: ${HF_TOKEN:0:10}..."
+# Prefer R2 (fast, datacenter speeds, ~2 min) over HuggingFace (~15 min, gated).
+# R2 credentials from secrets.env: R2_ACCESS_KEY_ID + R2_SECRET_ACCESS_KEY
+R2_ENDPOINT="https://fdc6cebcbbf7c7b33cc6a0e59ac8cd5f.r2.cloudflarestorage.com"
+R2_BUCKET="getampere-model-weights"
+MODEL_CACHE="/model-cache/hub/models--sesame--csm-1b"
 
-python3 -c "
-import huggingface_hub, os
-# HF_HOME=/model-cache is set in Docker ENV
-# snapshot_download to cache_dir puts files in hub/models--sesame--csm-1b/
-# which is exactly where Model.from_pretrained('sesame/csm-1b') looks
+if [ -d "$MODEL_CACHE/snapshots" ]; then
+    info "Model weights already on disk — skipping download."
+elif [ -n "${R2_ACCESS_KEY_ID:-}" ] && [ -n "${R2_SECRET_ACCESS_KEY:-}" ]; then
+    info "Downloading CSM-1B weights from R2 (~19GB, ~2-4 min at datacenter speeds)..."
+    pip install awscli -q 2>/dev/null
+    aws configure set aws_access_key_id "${R2_ACCESS_KEY_ID}"
+    aws configure set aws_secret_access_key "${R2_SECRET_ACCESS_KEY}"
+    aws configure set default.region auto
+    aws s3 sync \
+        "s3://${R2_BUCKET}/hub/models--sesame--csm-1b/" \
+        "$MODEL_CACHE/" \
+        --endpoint-url "$R2_ENDPOINT" \
+        --no-progress \
+    && info "Model weights downloaded from R2." \
+    || { warn "R2 download failed — falling back to HuggingFace..."; FALLBACK_HF=1; }
+else
+    warn "R2 credentials not set — falling back to HuggingFace (~15 min)..."
+    FALLBACK_HF=1
+fi
+
+if [ "${FALLBACK_HF:-0}" = "1" ]; then
+    info "Downloading CSM-1B model weights from HuggingFace (~3GB download, ~15 min)..."
+    info "HF token: ${HF_TOKEN:0:10}..."
+    python3 -c "
+import huggingface_hub
 huggingface_hub.login(token='${HF_TOKEN}')
 print('[HF] Authenticated. Downloading sesame/csm-1b to HF cache...')
 huggingface_hub.snapshot_download(
     repo_id='sesame/csm-1b',
     cache_dir='/model-cache/hub',
-    ignore_patterns=['*.bin'],   # prefer .safetensors
+    ignore_patterns=['*.bin'],
 )
 print('[HF] Download complete.')
 "
-info "Model weights downloaded."
+    info "Model weights downloaded from HuggingFace."
+fi
+
 
 # ── 5. Pull voice references ─────────────────────────────────────────────────
 # Voice refs live on the server permanently for zero-latency inference.
