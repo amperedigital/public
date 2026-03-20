@@ -102,10 +102,10 @@ info "Using HF token: ${HF_TOKEN:0:10}..."
 python3 -c "
 import huggingface_hub, os
 huggingface_hub.login(token='${HF_TOKEN}')
-print('[HF] Authenticated. Downloading sesame-ai-labs/csm-1b...')
+print('[HF] Authenticated. Downloading sesame-community/csm-1b...')
 huggingface_hub.snapshot_download(
-    repo_id='sesame-ai-labs/csm-1b',
-    local_dir='/model-cache/sesame-ai-labs/csm-1b',
+    repo_id='sesame-community/csm-1b',
+    local_dir='/model-cache/sesame-community/csm-1b',
     ignore_patterns=['*.bin'],   # prefer .safetensors
 )
 print('[HF] Download complete.')
